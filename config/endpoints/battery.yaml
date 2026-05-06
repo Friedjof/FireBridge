@@ -1,0 +1,38 @@
+version: 1
+
+id: battery
+kind: sensor
+name: Battery
+
+mqtt:
+  command_topic: ${base_topic}/battery/read
+  state_topic: ${base_topic}/battery/state
+
+ha:
+  component: sensor
+  object_id: battery
+  name: Battery
+  device_class: battery
+  state_class: measurement
+  unit: "%"
+
+steps:
+  - adb: shell dumpsys battery
+    capture: battery_dump
+    description: Read battery dump
+
+  - set:
+      battery_level:
+        regex:
+          source: battery_dump
+          pattern: "level:\\s*(\\d+)"
+          group: 1
+          type: int
+          default: 0
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${battery_level}
+      retain: true
+
+  - return: ${battery_level}

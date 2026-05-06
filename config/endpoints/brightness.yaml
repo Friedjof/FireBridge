@@ -1,0 +1,37 @@
+version: 1
+
+id: brightness
+kind: action
+name: Brightness
+
+mqtt:
+  command_topic: ${base_topic}/brightness/set
+  state_topic: ${base_topic}/brightness/state
+
+ha:
+  component: number
+  object_id: brightness
+  name: Brightness
+  min: 0
+  max: 255
+  step: 1
+  mode: slider
+
+inputs:
+  value:
+    type: number
+    min: 0
+    max: 255
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell settings put system screen_brightness ${value}
+    description: Set screen brightness
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${value}
+      retain: true
+
+  - return: ${value}
