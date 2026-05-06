@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "firebridge"
+version = "0.1.0"
+description = "Docker-first ADB bridge for controlling Android wall tablets from Home Assistant via MQTT"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "paho-mqtt>=2.1.0",
+    "PyYAML>=6.0.2",
+]
+
+[project.scripts]
+firebridge = "main:main"
+
+[tool.setuptools]
+packages = ["firebridge", "tools"]
+py-modules = ["main"]
