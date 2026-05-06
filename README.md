@@ -2,8 +2,7 @@
 
 > **Status: Beta.** APIs, YAML schema, and MQTT topics may still change without notice.
 
-<!-- TODO: replace with real demo video -->
-https://user-images.githubusercontent.com/0000000/placeholder-demo.mp4
+![FireBridge Architecture](media/architecture.png)
 
 FireBridge is a small Docker-first Python service for controlling an old Amazon Fire tablet over ADB and exposing it cleanly to Home Assistant via MQTT.
 
