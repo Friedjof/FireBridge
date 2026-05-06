@@ -1,0 +1,74 @@
+version: 1
+
+id: prod_foreground_app
+kind: sensor
+name: Foreground App
+
+schedule:
+  cron: "* * * * *"
+  run_on_start: true
+  payload: READ
+
+mqtt:
+  command_topic: ${base_topic}/foreground/read
+  state_topic: ${base_topic}/foreground/state
+
+ha:
+  component: sensor
+  object_id: foreground_app
+  name: Foreground App
+  icon: mdi:cellphone-text
+
+steps:
+  - adb: shell dumpsys power
+    capture: power_dump
+    description: Read display power state
+
+  - set:
+      display_state:
+        regex:
+          source: power_dump
+          pattern: "Display Power: state=(\\w+)"
+          group: 1
+          type: text
+          default: UNKNOWN
+
+  - if:
+      equals:
+        left: ${display_state}
+        right: "OFF"
+      then: report_off
+
+  - if:
+      equals:
+        left: ${display_state}
+        right: "DOZE"
+      then: report_off
+
+  - adb: shell dumpsys window windows
+    capture: window_dump
+    description: Read focused Android window
+
+  - set:
+      foreground_package:
+        regex:
+          source: window_dump
+          pattern: "mCurrentFocus=.*\\s([A-Za-z0-9_.$]+)/"
+          group: 1
+          type: text
+          default: unknown
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${foreground_package}
+      retain: true
+
+  - return: ${foreground_package}
+
+  - id: report_off
+    publish:
+      topic: ${mqtt.state_topic}
+      payload: "off"
+      retain: true
+
+  - return: "off"

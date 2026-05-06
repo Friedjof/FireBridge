@@ -1,0 +1,28 @@
+version: 1
+
+id: prod_shutdown
+kind: action
+name: Shutdown
+
+mqtt:
+  command_topic: ${base_topic}/shutdown
+
+ha:
+  component: button
+  object_id: shutdown
+  name: Shutdown
+  payload_press: SHUTDOWN
+  icon: mdi:power
+
+inputs:
+  confirm:
+    type: choice
+    choices: [SHUTDOWN]
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell reboot -p
+    description: Power off the tablet
+
+  - return: shutting_down

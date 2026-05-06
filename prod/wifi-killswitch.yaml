@@ -1,0 +1,34 @@
+version: 1
+
+id: prod_wifi_killswitch
+kind: action
+name: Wi-Fi Killswitch
+
+mqtt:
+  command_topic: ${base_topic}/wifi/kill
+  state_topic: ${base_topic}/wifi/state
+
+ha:
+  component: button
+  object_id: wifi_killswitch
+  name: Wi-Fi Killswitch
+  payload_press: KILL_WIFI
+  icon: mdi:wifi-off
+
+inputs:
+  confirm:
+    type: choice
+    choices: [KILL_WIFI]
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell svc wifi disable
+    description: Disable Wi-Fi (no re-enable from this bridge)
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: "off"
+      retain: true
+
+  - return: "off"
