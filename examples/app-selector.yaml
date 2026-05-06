@@ -1,0 +1,103 @@
+version: 1
+
+endpoints:
+  - id: example_current_app
+    kind: sensor
+    name: Example Current Foreground App
+
+    mqtt:
+      command_topic: ${base_topic}/examples/apps/foreground/read
+      state_topic: ${base_topic}/examples/apps/foreground/state
+
+    ha:
+      component: sensor
+      object_id: example_current_app
+      name: Example Current App
+
+    steps:
+      - adb: shell dumpsys window windows
+        capture: window_dump
+        description: Read focused Android window
+
+      - set:
+          foreground_package:
+            regex:
+              source: window_dump
+              pattern: "mCurrentFocus=.*\\s([A-Za-z0-9_.$]+)/"
+              group: 1
+              type: text
+              default: unknown
+
+      - publish:
+          topic: ${mqtt.state_topic}
+          payload: ${foreground_package}
+          retain: true
+
+      - return: ${foreground_package}
+
+  - id: example_app_selector
+    kind: action
+    name: Example App Selector
+
+    mqtt:
+      command_topic: ${base_topic}/examples/apps/select
+      state_topic: ${base_topic}/examples/apps/selected/state
+
+    ha:
+      component: select
+      object_id: example_app_selector
+      name: Example App Selector
+
+    inputs:
+      package:
+        type: choice
+        choices:
+          - key: home_assistant
+            name: Home Assistant
+            value: io.homeassistant.companion.android.minimal
+          - key: browser
+            name: Browser
+            value: org.lineageos.jelly
+          - key: settings
+            name: Settings
+            value: com.android.settings
+          - key: fdroid
+            name: F-Droid
+            value: org.fdroid.fdroid
+          - key: camera
+            name: Camera
+            value: com.android.camera2
+          - key: gallery
+            name: Gallery
+            value: com.android.gallery3d
+          - key: clock
+            name: Clock
+            value: com.android.deskclock
+          - key: calculator
+            name: Calculator
+            value: com.android.calculator2
+          - key: calendar
+            name: Calendar
+            value: com.android.calendar
+          - key: code_scanner
+            name: QR & Barcode Scanner
+            value: com.secuso.privacyFriendlyCodeScanner
+          - key: terminal
+            name: Terminal
+            value: com.android.terminal
+          - key: launcher
+            name: Launcher
+            value: com.cyanogenmod.trebuchet
+        from_payload: true
+        required: true
+
+    steps:
+      - adb: shell monkey -p ${package} 1
+        description: Bring selected app package to foreground
+
+      - publish:
+          topic: ${mqtt.state_topic}
+          payload: ${package_choice.name}
+          retain: true
+
+      - return: ${package_choice.name}

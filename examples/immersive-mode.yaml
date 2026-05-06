@@ -1,0 +1,79 @@
+version: 1
+
+id: example_immersive_mode
+kind: action
+name: Example Immersive Mode
+
+mqtt:
+  command_topic: ${base_topic}/examples/immersive/set
+  state_topic: ${base_topic}/examples/immersive/state
+
+ha:
+  component: select
+  object_id: example_immersive_mode
+  name: Example Immersive Mode
+  options:
+    - full
+    - navigation
+    - status
+    - reset
+
+inputs:
+  mode:
+    type: choice
+    choices: [full, navigation, status, reset]
+    from_payload: true
+    required: true
+
+steps:
+  - id: choose_full
+    if:
+      equals:
+        left: ${mode}
+        right: full
+      then: full
+      else: choose_navigation
+
+  - id: choose_navigation
+    if:
+      equals:
+        left: ${mode}
+        right: navigation
+      then: navigation
+      else: choose_status
+
+  - id: choose_status
+    if:
+      equals:
+        left: ${mode}
+        right: status
+      then: status
+      else: reset
+
+  - id: full
+    adb: shell settings put global policy_control immersive.full=*
+    description: Hide navigation bar and status bar
+    next: publish
+
+  - id: navigation
+    adb: shell settings put global policy_control immersive.navigation=*
+    description: Hide only the navigation bar
+    next: publish
+
+  - id: status
+    adb: shell settings put global policy_control immersive.status=*
+    description: Hide only the status bar
+    next: publish
+
+  - id: reset
+    adb: shell settings put global policy_control null
+    description: Reset immersive mode
+    next: publish
+
+  - id: publish
+    publish:
+      topic: ${mqtt.state_topic}
+      payload: ${mode}
+      retain: true
+
+  - return: ${mode}

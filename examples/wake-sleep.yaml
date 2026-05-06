@@ -1,0 +1,50 @@
+version: 1
+
+endpoints:
+  - id: example_wake
+    kind: action
+    name: Example Wake Display
+
+    mqtt:
+      command_topic: ${base_topic}/examples/wake
+
+    ha:
+      component: button
+      object_id: example_wake
+      name: Example Wake
+
+    steps:
+      - adb: shell input keyevent KEYCODE_WAKEUP
+      - return: awake
+
+  - id: example_sleep
+    kind: action
+    name: Example Sleep Display
+
+    mqtt:
+      command_topic: ${base_topic}/examples/sleep
+
+    ha:
+      component: button
+      object_id: example_sleep
+      name: Example Sleep
+
+    steps:
+      - adb: shell input keyevent KEYCODE_SLEEP
+      - return: asleep
+
+  - id: example_power_toggle
+    kind: action
+    name: Example Power Toggle
+
+    mqtt:
+      command_topic: ${base_topic}/examples/power_toggle
+
+    ha:
+      component: button
+      object_id: example_power_toggle
+      name: Example Power Toggle
+
+    steps:
+      - adb: shell input keyevent 26
+      - return: toggled

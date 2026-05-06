@@ -1,0 +1,54 @@
+version: 1
+
+endpoints:
+  - id: example_set_fully_device_owner
+    kind: action
+    name: Example Set Fully Kiosk Device Owner
+
+    mqtt:
+      command_topic: ${base_topic}/examples/kiosk/fully/device_owner/set
+
+    ha:
+      component: button
+      object_id: example_set_fully_device_owner
+      name: Example Set Fully Device Owner
+      payload_press: SET_DEVICE_OWNER
+
+    inputs:
+      confirm:
+        type: choice
+        choices: [SET_DEVICE_OWNER]
+        from_payload: true
+        required: true
+
+    steps:
+      - adb: shell dpm set-device-owner de.ozerov.fully/.DeviceAdminReceiver
+        description: Set Fully Kiosk Browser as Device Owner
+
+      - return: requested
+
+  - id: example_set_freekiosk_device_owner
+    kind: action
+    name: Example Set FreeKiosk Device Owner
+
+    mqtt:
+      command_topic: ${base_topic}/examples/kiosk/freekiosk/device_owner/set
+
+    ha:
+      component: button
+      object_id: example_set_freekiosk_device_owner
+      name: Example Set FreeKiosk Device Owner
+      payload_press: SET_DEVICE_OWNER
+
+    inputs:
+      confirm:
+        type: choice
+        choices: [SET_DEVICE_OWNER]
+        from_payload: true
+        required: true
+
+    steps:
+      - adb: shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
+        description: Set FreeKiosk as Device Owner
+
+      - return: requested

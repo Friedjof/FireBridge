@@ -1,0 +1,37 @@
+version: 1
+
+id: example_volume
+kind: action
+name: Example Media Volume
+
+mqtt:
+  command_topic: ${base_topic}/examples/volume/set
+  state_topic: ${base_topic}/examples/volume/state
+
+ha:
+  component: number
+  object_id: example_media_volume
+  name: Example Media Volume
+  min: 0
+  max: 15
+  step: 1
+  mode: slider
+
+inputs:
+  value:
+    type: number
+    min: 0
+    max: 15
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell media volume --stream 3 --set ${value}
+    description: Set media stream volume
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${value}
+      retain: true
+
+  - return: ${value}

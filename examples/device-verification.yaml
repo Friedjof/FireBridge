@@ -1,0 +1,104 @@
+version: 1
+
+endpoints:
+  - id: example_verify_codename
+    kind: sensor
+    name: Example Verify Device Codename
+
+    mqtt:
+      command_topic: ${base_topic}/examples/device/codename/read
+      state_topic: ${base_topic}/examples/device/codename/state
+
+    ha:
+      component: sensor
+      object_id: example_device_codename
+      name: Example Device Codename
+
+    steps:
+      - adb: shell getprop ro.product.device
+        capture: codename_raw
+        description: Read Android device codename
+
+      - set:
+          codename:
+            regex:
+              source: codename_raw
+              pattern: "^(.+)$"
+              group: 1
+              type: text
+              default: unknown
+
+      - publish:
+          topic: ${mqtt.state_topic}
+          payload: ${codename}
+          retain: true
+
+      - return: ${codename}
+
+  - id: example_verify_model
+    kind: sensor
+    name: Example Verify Device Model
+
+    mqtt:
+      command_topic: ${base_topic}/examples/device/model/read
+      state_topic: ${base_topic}/examples/device/model/state
+
+    ha:
+      component: sensor
+      object_id: example_device_model
+      name: Example Device Model
+
+    steps:
+      - adb: shell getprop ro.product.model
+        capture: model_raw
+        description: Read Android device model
+
+      - set:
+          model:
+            regex:
+              source: model_raw
+              pattern: "^(.+)$"
+              group: 1
+              type: text
+              default: unknown
+
+      - publish:
+          topic: ${mqtt.state_topic}
+          payload: ${model}
+          retain: true
+
+      - return: ${model}
+
+  - id: example_verify_android_version
+    kind: sensor
+    name: Example Verify Android Version
+
+    mqtt:
+      command_topic: ${base_topic}/examples/device/android/read
+      state_topic: ${base_topic}/examples/device/android/state
+
+    ha:
+      component: sensor
+      object_id: example_android_version
+      name: Example Android Version
+
+    steps:
+      - adb: shell getprop ro.build.version.release
+        capture: android_raw
+        description: Read Android version
+
+      - set:
+          android_version:
+            regex:
+              source: android_raw
+              pattern: "^(.+)$"
+              group: 1
+              type: text
+              default: unknown
+
+      - publish:
+          topic: ${mqtt.state_topic}
+          payload: ${android_version}
+          retain: true
+
+      - return: ${android_version}

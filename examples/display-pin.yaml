@@ -1,0 +1,89 @@
+version: 1
+
+id: example_display_pin
+kind: action
+name: Example Display With PIN Unlock
+
+mqtt:
+  command_topic: ${base_topic}/examples/display/set
+  state_topic: ${base_topic}/examples/display/state
+
+ha:
+  component: switch
+  object_id: example_display_pin
+  name: Example Display PIN
+  payload_on: "ON"
+  payload_off: "OFF"
+
+inputs:
+  state:
+    type: choice
+    choices: ["ON", "OFF", "TOGGLE"]
+    from_payload: true
+    required: true
+  pin:
+    type: text
+    env: UNLOCK_PIN
+    secret: true
+    required: true
+
+steps:
+  - id: choose_on
+    if:
+      equals:
+        left: ${state}
+        right: "ON"
+      then: do_on
+      else: choose_off
+
+  - id: choose_off
+    if:
+      equals:
+        left: ${state}
+        right: "OFF"
+      then: do_off
+      else: do_toggle
+
+  - id: do_on
+    adb: shell input keyevent KEYCODE_WAKEUP
+    description: Wake the tablet display
+
+  - sleep: 500
+
+  - adb: shell input swipe 400 700 400 200
+    description: Open PIN entry screen
+
+  - sleep: 250
+
+  - adb: shell input text ${pin}
+    description: Enter unlock PIN
+
+  - adb: shell input keyevent KEYCODE_ENTER
+    description: Submit unlock PIN
+
+  - adb: shell settings put system screen_off_timeout 2147483647
+    description: Keep the display awake
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: "ON"
+      retain: true
+
+  - return: "ON"
+
+  - id: do_off
+    adb: shell input keyevent KEYCODE_SLEEP
+    description: Sleep the tablet display
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: "OFF"
+      retain: true
+
+  - return: "OFF"
+
+  - id: do_toggle
+    adb: shell input keyevent 26
+    description: Toggle display power
+
+  - return: "TOGGLE"

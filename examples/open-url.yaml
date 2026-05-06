@@ -1,0 +1,45 @@
+version: 1
+
+id: example_open_url
+kind: action
+name: Example Open URL
+
+mqtt:
+  command_topic: ${base_topic}/examples/url/set
+
+ha:
+  component: text
+  object_id: example_open_url
+  name: Example Open URL
+  mode: text
+
+inputs:
+  url:
+    type: text
+    from_payload: true
+    required: true
+
+steps:
+  - if:
+      matches:
+        value: ${url}
+        pattern: ^https?://
+      then: open
+      else: invalid_url
+
+  - id: open
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - ${url}
+    description: Open URL through Android intent handling
+
+  - return: ${url}
+
+  - id: invalid_url
+    fail: URL must start with http:// or https://
