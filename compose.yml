@@ -1,0 +1,15 @@
+services:
+  firebridge:
+    build: .
+    container_name: firebridge
+    restart: unless-stopped
+    privileged: true
+    env_file:
+      - .env
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+      - firebridge-adb:/root/.android
+      - ./examples:/config/endpoints:ro
+
+volumes:
+  firebridge-adb:
