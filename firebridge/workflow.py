@@ -10,9 +10,12 @@ from tools.adb import AdbRunner, adb_command
 from tools.models import ToolCommand, ToolContext
 
 from .config import AppConfig
+from .logging import get_logger, truncate
 from .workflow_inputs import resolve_inputs
 from .workflow_template import render_nested, render_template, resolve_variable
 from .yaml_endpoints import EndpointConfig, endpoint_variables
+
+log = get_logger("firebridge.workflow")
 
 
 Publisher = Callable[[str, str, bool], None]
@@ -105,6 +108,16 @@ class WorkflowRunner:
             if isinstance(step, dict) and "id" in step
         }
 
+        log.debug(
+            "Workflow start",
+            extra={
+                "endpoint_id": endpoint.id,
+                "steps": len(steps),
+                "dry_run": dry_run,
+                "payload": truncate(payload, 120),
+            },
+        )
+
         index = 0
         executed_steps = 0
         while index < len(steps):
@@ -113,6 +126,15 @@ class WorkflowRunner:
             executed_steps += 1
 
             step = steps[index]
+            log.debug(
+                "Workflow step",
+                extra={
+                    "endpoint_id": endpoint.id,
+                    "index": index,
+                    "step_id": step.get("id", ""),
+                    "kind": _step_kind(step),
+                },
+            )
             next_label = self._execute_step(endpoint, step, variables, secrets, result, dry_run)
             if result.status == "returned":
                 result.status = "ok"
@@ -127,6 +149,16 @@ class WorkflowRunner:
             index += 1
 
         result.variables = self._redacted_variables(variables, secrets)
+        log.debug(
+            "Workflow end",
+            extra={
+                "endpoint_id": endpoint.id,
+                "status": result.status,
+                "steps_executed": executed_steps,
+                "commands": len(result.commands),
+                "publishes": len(result.publishes),
+            },
+        )
         return result
 
     def _execute_step(
@@ -188,18 +220,53 @@ class WorkflowRunner:
             description=command.description,
         )
 
-        if not dry_run:
-            completed = self.runner.run(command)
-            report.returncode = completed.returncode
-            report.stdout = completed.stdout
-            report.stderr = completed.stderr
-            if completed.returncode != 0:
-                result.commands.append(report)
-                raise WorkflowError(
-                    f"ADB step failed in {endpoint.id}: {completed.stderr.strip()}"
-                )
-            if capture := step.get("capture"):
-                variables[str(capture)] = completed.stdout
+        log_argv = command.to_dict()["argv"]
+        if dry_run:
+            log.debug(
+                "ADB step (dry-run)",
+                extra={
+                    "endpoint_id": endpoint.id,
+                    "argv": log_argv,
+                    "description": command.description,
+                },
+            )
+            result.commands.append(report)
+            return
+
+        started = time.monotonic()
+        completed = self.runner.run(command)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        report.returncode = completed.returncode
+        report.stdout = completed.stdout
+        report.stderr = completed.stderr
+        if completed.returncode != 0:
+            result.commands.append(report)
+            log.error(
+                "ADB step failed",
+                extra={
+                    "endpoint_id": endpoint.id,
+                    "argv": log_argv,
+                    "rc": completed.returncode,
+                    "stderr": truncate(completed.stderr.strip(), 300),
+                    "stdout": truncate(completed.stdout.strip(), 300),
+                    "duration_ms": duration_ms,
+                },
+            )
+            raise WorkflowError(
+                f"ADB step failed in {endpoint.id}: {completed.stderr.strip()}"
+            )
+        log.debug(
+            "ADB step ok",
+            extra={
+                "endpoint_id": endpoint.id,
+                "argv": log_argv,
+                "rc": completed.returncode,
+                "stdout": truncate(completed.stdout.strip(), 200),
+                "duration_ms": duration_ms,
+            },
+        )
+        if capture := step.get("capture"):
+            variables[str(capture)] = completed.stdout
         result.commands.append(report)
 
     def _adb_args(
@@ -307,3 +374,10 @@ class WorkflowRunner:
             for key, value in variables.items()
             if key not in {"endpoint", "mqtt"}
         }
+
+
+def _step_kind(step: dict[str, Any]) -> str:
+    for key in ("if", "jump", "sleep", "set", "adb", "publish", "return", "fail"):
+        if key in step:
+            return key
+    return "unknown"

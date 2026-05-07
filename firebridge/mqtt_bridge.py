@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 import time
 from dataclasses import dataclass
 from threading import RLock
@@ -13,10 +12,13 @@ from tools.registry import build_tool_result
 from .config import AppConfig
 from .discovery import build_discovery_payloads
 from .executor import execute_tool_result
+from .logging import get_logger, truncate
 from .scheduler import WorkflowScheduler
 from .state import read_device_state
 from .workflow import WorkflowResult, WorkflowRunner
 from .yaml_endpoints import EndpointConfig, load_endpoints
+
+log = get_logger("firebridge.mqtt")
 
 
 @dataclass(frozen=True)
@@ -91,17 +93,45 @@ class MqttBridge:
 
     def run_forever(self) -> int:
         if not self.config.mqtt_host:
-            print("MQTT_HOST is required for firebridge serve", file=sys.stderr)
+            log.error("MQTT_HOST is required for firebridge serve")
             return 2
 
         try:
             import paho.mqtt.client as mqtt
         except ImportError:
-            print("paho-mqtt is not installed", file=sys.stderr)
+            log.error("paho-mqtt is not installed")
             return 2
 
+        log.info(
+            "Starting bridge",
+            extra={
+                "mqtt_host": self.config.mqtt_host,
+                "mqtt_port": self.config.mqtt_port,
+                "client_id": self.config.mqtt_client_id,
+                "base_topic": self.config.base_topic,
+                "config_dir": self.config.config_dir,
+                "endpoints": len(self.endpoints),
+                "adb_target": self.config.adb_target or "<usb>",
+            },
+        )
+
         if self.config.adb_target and self.config.adb_connect_on_start:
-            self.runner.connect(self.config.adb_target)
+            log.info("Connecting ADB", extra={"target": self.config.adb_target})
+            connect_result = self.runner.connect(self.config.adb_target)
+            if connect_result.returncode == 0:
+                log.info(
+                    "ADB connect ok",
+                    extra={"target": self.config.adb_target, "stdout": truncate(connect_result.stdout.strip(), 120)},
+                )
+            else:
+                log.warning(
+                    "ADB connect returned non-zero",
+                    extra={
+                        "target": self.config.adb_target,
+                        "rc": connect_result.returncode,
+                        "stderr": truncate(connect_result.stderr.strip(), 200),
+                    },
+                )
 
         client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -128,22 +158,51 @@ class MqttBridge:
         )
 
         def on_connect(client, userdata, flags, reason_code, properties):
+            log.info(
+                "Connected to MQTT broker",
+                extra={
+                    "host": self.config.mqtt_host,
+                    "port": self.config.mqtt_port,
+                    "reason_code": int(reason_code),
+                },
+            )
             client.publish(self.config.availability_topic, "online", retain=True)
-            for topic in self._subscription_topics():
+            topics = self._subscription_topics()
+            for topic in topics:
                 client.subscribe(topic)
+            log.info(
+                "Subscribed to command topics",
+                extra={"count": len(topics), "base_topic": self.config.base_topic},
+            )
+            log.debug("Subscriptions", extra={"topics": topics})
             if self.config.mqtt_discovery_enabled:
-                self._publish_discovery(client)
+                published = self._publish_discovery(client)
+                log.info(
+                    "Published HA discovery payloads",
+                    extra={"count": published, "prefix": self.config.mqtt_discovery_prefix},
+                )
             self._publish_state(client)
+
+        def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+            level = log.warning if int(reason_code) != 0 else log.info
+            level(
+                "Disconnected from MQTT broker",
+                extra={"reason_code": int(reason_code)},
+            )
 
         def on_message(client, userdata, message):
             if should_ignore_mqtt_message(self.config, bool(message.retain)):
-                print(
-                    f"Ignoring retained MQTT command on {message.topic}",
-                    file=sys.stderr,
+                log.debug(
+                    "Ignoring retained MQTT command",
+                    extra={"topic": message.topic},
                 )
                 return
 
             payload = message.payload.decode("utf-8", errors="replace")
+            log.info(
+                "MQTT command received",
+                extra={"topic": message.topic, "payload": truncate(payload, 200)},
+            )
             try:
                 action = action_from_message(
                     self.config,
@@ -152,14 +211,31 @@ class MqttBridge:
                     self.endpoints if self.endpoints else None,
                 )
                 if action is None:
+                    log.debug(
+                        "No action mapped for topic",
+                        extra={"topic": message.topic},
+                    )
                     return
                 if action.kind == "reconnect":
+                    log.info(
+                        "Handling reconnect request",
+                        extra={"target": self.config.adb_target or "<usb>"},
+                    )
                     if self.config.adb_target:
                         with self.adb_lock:
                             self.runner.connect(self.config.adb_target)
                     self._publish_state(client)
                     return
                 if action.kind == "workflow" and action.endpoint is not None:
+                    started = time.monotonic()
+                    log.info(
+                        "Running workflow",
+                        extra={
+                            "endpoint_id": action.endpoint.id,
+                            "kind": action.endpoint.kind,
+                            "payload": truncate(action.payload, 120),
+                        },
+                    )
                     with self.adb_lock:
                         workflow = WorkflowRunner(
                             self.config,
@@ -171,6 +247,18 @@ class MqttBridge:
                             ),
                         )
                         workflow_result = workflow.run(action.endpoint, action.payload)
+                    duration_ms = int((time.monotonic() - started) * 1000)
+                    log.info(
+                        "Workflow finished",
+                        extra={
+                            "endpoint_id": action.endpoint.id,
+                            "status": workflow_result.status,
+                            "return_value": truncate(workflow_result.return_value, 120),
+                            "commands": len(workflow_result.commands),
+                            "publishes": len(workflow_result.publishes),
+                            "duration_ms": duration_ms,
+                        },
+                    )
                     self._publish_workflow_return_state(
                         client,
                         action.endpoint,
@@ -179,16 +267,39 @@ class MqttBridge:
                     self._publish_state(client)
                     return
                 if action.result is not None:
+                    log.info(
+                        "Running tool",
+                        extra={
+                            "tool": action.result.tool,
+                            "commands": len(action.result.commands),
+                        },
+                    )
                     with self.adb_lock:
                         report = execute_tool_result(action.result, self.runner)
                     if report.exit_code != 0:
-                        print(json.dumps(report.to_dict()), file=sys.stderr)
+                        log.error(
+                            "Tool execution failed",
+                            extra={
+                                "tool": action.result.tool,
+                                "rc": report.exit_code,
+                                "report": truncate(json.dumps(report.to_dict()), 400),
+                            },
+                        )
+                    else:
+                        log.debug(
+                            "Tool execution ok",
+                            extra={"tool": action.result.tool},
+                        )
                     self._publish_action_state(client, action.result)
                     self._publish_state(client)
             except Exception as exc:  # MQTT callbacks should not crash the service.
-                print(f"Failed to handle MQTT message on {message.topic}: {exc}", file=sys.stderr)
+                log.exception(
+                    "Failed to handle MQTT message",
+                    extra={"topic": message.topic, "error": str(exc)},
+                )
 
         client.on_connect = on_connect
+        client.on_disconnect = on_disconnect
         client.on_message = on_message
         client.connect(self.config.mqtt_host, self.config.mqtt_port, keepalive=60)
 
@@ -202,7 +313,10 @@ class MqttBridge:
                     if scheduled_results:
                         self._publish_state(client)
                 except Exception as exc:
-                    print(f"Failed to run scheduled workflow: {exc}", file=sys.stderr)
+                    log.exception(
+                        "Scheduled workflow run failed",
+                        extra={"error": str(exc)},
+                    )
 
                 if time.monotonic() - last_state_publish >= max(
                     1,
@@ -211,6 +325,7 @@ class MqttBridge:
                     self._publish_state(client)
                     last_state_publish = time.monotonic()
         except KeyboardInterrupt:
+            log.info("Shutdown requested")
             client.publish(self.config.availability_topic, "offline", retain=True)
             client.disconnect()
             return 0
@@ -237,7 +352,8 @@ class MqttBridge:
             self.config.reconnect_command_topic,
         ]
 
-    def _publish_discovery(self, client) -> None:
+    def _publish_discovery(self, client) -> int:
+        published = 0
         for discovery in build_discovery_payloads(
             self.config,
             self.endpoints if self.endpoints else None,
@@ -247,6 +363,8 @@ class MqttBridge:
                 json.dumps(discovery.payload, sort_keys=True),
                 retain=True,
             )
+            published += 1
+        return published
 
     def _publish_action_state(self, client, result: ToolResult) -> None:
         if result.tool.startswith("screen.") and "screen" in result.state:

@@ -252,6 +252,16 @@ volumes:
 | `SCREEN_OFF_TIMEOUT_MS` | `2147483647` | Timeout used when display should stay awake. |
 | `UNLOCK_PIN` | empty | PIN used by the bundled `display` YAML endpoint. Dry-run output redacts this value. |
 
+### Logging
+
+Logs are written to stderr so `docker logs` and `docker compose logs -f` capture them out of the box. The default text format includes timestamp, level, logger name, message, and structured key/value extras (e.g. `endpoint_id=prod_kiosk duration_ms=312`). Switch to `LOG_FORMAT=json` for one-record-per-line output suitable for log aggregators.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. `DEBUG` traces every workflow step and ADB command. |
+| `LOG_FORMAT` | `text` | `text` for human-readable output, `json` for structured logs. |
+| `LOG_COLOR` | `auto` | `auto` (TTY only), `always`, or `never`. Ignored when `LOG_FORMAT=json`. |
+
 ### Security
 
 | Variable | Default | Description |

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
@@ -10,8 +11,11 @@ from tools.adb import AdbRunner
 
 from .config import AppConfig
 from .cron import CronExpression, parse_cron_expression
+from .logging import get_logger, truncate
 from .workflow import Publisher, WorkflowResult, WorkflowRunner
 from .yaml_endpoints import EndpointConfig
+
+log = get_logger("firebridge.scheduler")
 
 
 NowProvider = Callable[[], datetime]
@@ -79,6 +83,14 @@ class WorkflowScheduler:
             job = ScheduledWorkflow.from_endpoint(config, endpoint, current_time)
             if job is not None:
                 self.jobs.append(job)
+        if self.jobs:
+            log.info(
+                "Scheduler armed",
+                extra={
+                    "jobs": len(self.jobs),
+                    "endpoints": [job.endpoint.id for job in self.jobs],
+                },
+            )
 
     def run_due(self) -> list[WorkflowResult]:
         current_time = self.now()
@@ -87,6 +99,14 @@ class WorkflowScheduler:
             if not job.is_due(current_time):
                 continue
 
+            log.debug(
+                "Scheduled workflow due",
+                extra={
+                    "endpoint_id": job.endpoint.id,
+                    "cron": job.cron.expression,
+                },
+            )
+            started = time.monotonic()
             with self.adb_lock:
                 workflow = WorkflowRunner(
                     self.config,
@@ -94,6 +114,17 @@ class WorkflowScheduler:
                     publisher=self.publisher,
                 )
                 result = workflow.run(job.endpoint, job.payload)
+            duration_ms = int((time.monotonic() - started) * 1000)
+            log.info(
+                "Scheduled workflow finished",
+                extra={
+                    "endpoint_id": job.endpoint.id,
+                    "status": result.status,
+                    "return_value": truncate(result.return_value, 120),
+                    "commands": len(result.commands),
+                    "duration_ms": duration_ms,
+                },
+            )
             self._publish_return_state(job.endpoint, result)
             job.mark_run(current_time)
             results.append(result)

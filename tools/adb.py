@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 
 from .models import ToolCommand, ToolContext
+
+log = logging.getLogger("firebridge.adb")
 
 
 def adb_command(
@@ -44,6 +47,7 @@ class AdbRunner:
         self.timeout = timeout
 
     def connect(self, target: str) -> subprocess.CompletedProcess[str]:
+        log.debug("adb connect", extra={"target": target, "timeout": self.timeout})
         return subprocess.run(
             ["adb", "connect", target],
             check=False,
@@ -53,8 +57,14 @@ class AdbRunner:
         )
 
     def run(self, command: ToolCommand) -> subprocess.CompletedProcess[str]:
+        argv = command.argv
+        log.log(
+            5,  # below DEBUG: only visible if explicitly enabled
+            "adb run",
+            extra={"argv": argv, "description": command.description},
+        )
         return subprocess.run(
-            command.argv,
+            argv,
             check=False,
             text=True,
             capture_output=True,

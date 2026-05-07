@@ -7,7 +7,10 @@ from typing import Any
 import yaml
 
 from .config import AppConfig
+from .logging import get_logger
 from .workflow_template import render_template
+
+log = get_logger("firebridge.endpoints")
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,7 @@ def load_endpoint_file(path: Path) -> list[EndpointConfig]:
 def load_endpoints(config_dir: str) -> list[EndpointConfig]:
     path = Path(config_dir)
     if not path.exists():
+        log.warning("Endpoint config dir missing", extra={"config_dir": config_dir})
         return []
 
     files = sorted([*path.rglob("*.yaml"), *path.rglob("*.yml")])
@@ -219,4 +223,13 @@ def load_endpoints(config_dir: str) -> list[EndpointConfig]:
             seen.add(endpoint.id)
             endpoints.append(endpoint)
 
+    log.info(
+        "Loaded endpoints",
+        extra={
+            "config_dir": config_dir,
+            "files": len(files),
+            "endpoints": len(endpoints),
+            "ids": [endpoint.id for endpoint in endpoints],
+        },
+    )
     return endpoints

@@ -7,9 +7,12 @@ import sys
 import time
 from dataclasses import replace
 
+from firebridge.logging import get_logger, setup_logging
 from tools.adb import AdbRunner
 from tools.models import ToolContext, ToolResult
 from tools.registry import available_tools, build_tool_result
+
+log = get_logger("firebridge.cli")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -93,12 +96,15 @@ def _execute_tool_result(result: ToolResult) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    setup_logging()
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:
         parser.print_help()
         return 0
+
+    log.debug("CLI invoked", extra={"command": args.command})
 
     if args.command == "serve":
         from firebridge.config import AppConfig
@@ -146,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.workflows_command == "run":
             endpoint = next((item for item in endpoints if item.id == args.id), None)
             if endpoint is None:
-                print(f"Unknown workflow endpoint: {args.id}", file=sys.stderr)
+                log.error("Unknown workflow endpoint", extra={"id": args.id})
                 return 2
             try:
                 workflow = WorkflowRunner(
@@ -156,7 +162,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 result = workflow.run(endpoint, args.payload, dry_run=args.dry_run)
             except Exception as exc:
-                print(str(exc), file=sys.stderr)
+                log.error(
+                    "Workflow run failed",
+                    extra={"id": args.id, "error": str(exc)},
+                    exc_info=log.isEnabledFor(10),  # 10 = DEBUG
+                )
                 return 2
             print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
             return 0
@@ -175,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
                 value=args.value,
             )
         except ValueError as exc:
-            print(str(exc), file=sys.stderr)
+            log.error("Tool argument error", extra={"tool": args.name, "error": str(exc)})
             return 2
 
         if args.dry_run:
