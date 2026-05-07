@@ -36,8 +36,8 @@ steps:
     adb: shell dpm set-device-owner de.ozerov.fully/.FullyDeviceAdminReceiver || true
     description: Set Fully Kiosk as Device Owner (already-set is tolerated)
 
-  - adb: shell cmd package set-home-activity de.ozerov.fully/.MainActivity
-    description: Set Fully Kiosk as default launcher
+  - adb: shell cmd package set-home-activity de.ozerov.fully/.MainActivity || true
+    description: Set Fully Kiosk as default launcher (no-op when Fully build does not declare HOME category)
 
   - adb: shell dpm set-lock-task-packages de.ozerov.fully
     description: Allow only Fully Kiosk in Lock Task Mode
