@@ -1,0 +1,33 @@
+version: 1
+
+id: prod_alarm_snooze
+kind: action
+name: Alarm Snooze
+
+# Snoozes the currently firing alarm (or the next alarm pending dismissal)
+# via Android's standard android.intent.action.SNOOZE_ALARM. Has no effect
+# when no alarm is active. Guarded by the payload "SNOOZE" so retained MQTT
+# messages cannot trigger it accidentally.
+
+mqtt:
+  command_topic: ${base_topic}/alarm/snooze
+
+ha:
+  component: button
+  object_id: alarm_snooze
+  name: Alarm Snooze
+  payload_press: SNOOZE
+  icon: mdi:alarm-snooze
+
+inputs:
+  confirm:
+    type: choice
+    choices: [SNOOZE]
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell am start -a android.intent.action.SNOOZE_ALARM
+    description: Snooze the firing alarm
+
+  - return: snoozed

@@ -1,0 +1,34 @@
+version: 1
+
+id: prod_alarm_dismiss
+kind: action
+name: Alarm Dismiss
+
+# Dismisses the firing alarm (or the next pending one) via Android's
+# android.intent.action.DISMISS_ALARM. EXTRA_ALARM_SEARCH_MODE_ALARM tells
+# the handler to target alarms (vs. timers). Use prod_alarm_clear when you
+# want to wipe the entire saved alarm list — this only dismisses the
+# currently scheduled one. Guarded by the payload "DISMISS".
+
+mqtt:
+  command_topic: ${base_topic}/alarm/dismiss
+
+ha:
+  component: button
+  object_id: alarm_dismiss
+  name: Alarm Dismiss
+  payload_press: DISMISS
+  icon: mdi:alarm-off
+
+inputs:
+  confirm:
+    type: choice
+    choices: [DISMISS]
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell am start -a android.intent.action.DISMISS_ALARM --ez android.intent.extra.alarm.IS_ALARM true
+    description: Dismiss the firing or next pending alarm
+
+  - return: dismissed

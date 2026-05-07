@@ -34,6 +34,9 @@ CONFIG_DIR=/config/endpoints docker compose run --rm -v ./prod:/config/endpoints
 | `view-select.yaml` | action | select | Curated dropdown of HA views deep-linked via `homeassistant://navigate/<value>`. Edit the `inputs.view.choices` list to add or remove entries; FireBridge republishes discovery on each restart and tombstones removed options. State topic publishes the chosen `name`. |
 | `alarm.yaml` | action | text | Schedules an alarm via Android's `SET_ALARM` intent (handled by `com.android.deskclock`). Plain text `HH:MM` fires once; JSON `{"time":"07:30","days":"mo,di,fr","label":"Aufstehen"}` adds `EXTRA_DAYS` for recurring alarms and `EXTRA_MESSAGE` for a label. `days` accepts `daily`, `weekdays`, `weekend`, German/English day shortcuts, full names, or raw 1-7 (1=Sun). `label` is restricted to `[\w \-.,:!?]` so single-quote shell escaping stays safe. |
 | `alarm-clear.yaml` | action | button | Wipes every saved DeskClock alarm via `pm clear com.android.deskclock`. Side-effects: timer/stopwatch state and DeskClock settings are reset to defaults. Guarded by payload `CLEAR`. |
+| `alarm-snooze.yaml` | action | button | Snoozes the firing alarm via `android.intent.action.SNOOZE_ALARM`. Guarded by payload `SNOOZE`. |
+| `alarm-dismiss.yaml` | action | button | Dismisses the firing or next pending alarm via `android.intent.action.DISMISS_ALARM` (with `IS_ALARM=true`). Use `alarm-clear.yaml` to wipe the saved list. Guarded by payload `DISMISS`. |
+| `alarm-timer.yaml` | action | text | Starts a DeskClock countdown timer via `SET_TIMER`. Plain integer = seconds; JSON `{"seconds":600,"label":"Pizza"}` adds a label. `SKIP_UI=true` keeps the clock app off-screen. |
 
 ## Required environment variables
 

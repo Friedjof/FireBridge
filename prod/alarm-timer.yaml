@@ -1,0 +1,82 @@
+version: 1
+
+id: prod_alarm_timer
+kind: action
+name: Timer
+
+# Starts a countdown timer (DeskClock's "Timer" tab) via
+# android.intent.action.SET_TIMER. SKIP_UI=true keeps the clock app off
+# screen — the timer counts down silently and rings on completion.
+#
+# Payload shapes:
+#
+#   1. Plain integer seconds — "600" → 10 minute timer with no label
+#
+#   2. JSON
+#        {"seconds": 600, "label": "Pizza"}
+#      Adds EXTRA_MESSAGE so the firing notification names what's done.
+#      `label` follows the same charset rules as prod_alarm
+#      (letters, digits, spaces, "_-.,:!?").
+
+mqtt:
+  command_topic: ${base_topic}/alarm/timer
+  state_topic: ${base_topic}/alarm/timer/state
+
+ha:
+  component: text
+  object_id: alarm_timer
+  name: Timer Seconds
+  mode: text
+  icon: mdi:timer-sand
+
+inputs:
+  seconds:
+    type: number
+    min: 1
+    max: 86400
+    from_payload: true
+    payload_key: seconds
+    required: true
+  label:
+    type: text
+    from_payload: true
+    payload_key: label
+    default: ""
+    required: false
+
+steps:
+  - if:
+      matches:
+        value: ${label}
+        pattern: '^[\w \-.,:!?]*$'
+      then: start
+      else: invalid_label
+
+  - id: start
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.SET_TIMER
+        - --ei
+        - android.intent.extra.alarm.LENGTH
+        - ${seconds}
+        - --es
+        - android.intent.extra.alarm.MESSAGE
+        - "'${label}'"
+        - --ez
+        - android.intent.extra.alarm.SKIP_UI
+        - "true"
+    description: Start a DeskClock countdown timer
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${seconds}
+      retain: true
+
+  - return: ${seconds}
+
+  - id: invalid_label
+    fail: Label may only contain letters, digits, spaces and "_-.,:!?"
