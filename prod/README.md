@@ -37,6 +37,7 @@ CONFIG_DIR=/config/endpoints docker compose run --rm -v ./prod:/config/endpoints
 | `alarm-snooze.yaml` | action | button | Snoozes the firing alarm via `android.intent.action.SNOOZE_ALARM`. Guarded by payload `SNOOZE`. |
 | `alarm-dismiss.yaml` | action | button | Dismisses the firing or next pending alarm via `android.intent.action.DISMISS_ALARM` (with `IS_ALARM=true`). Use `alarm-clear.yaml` to wipe the saved list. Guarded by payload `DISMISS`. |
 | `alarm-timer.yaml` | action | text | Starts a DeskClock countdown timer via `SET_TIMER`. Plain integer = seconds; JSON `{"seconds":600,"label":"Pizza"}` adds a label. `SKIP_UI=true` keeps the clock app off-screen. |
+| `ping.yaml` | action | button | Plays an instant doorbell-style notification sound through Android's media-preview activity, then dismisses the preview with `KEYCODE_BACK` so the wallpanel returns to whatever was foregrounded. Defaults to `Argon` from `/system/media/audio/notifications/`. Override with JSON `{"sound":"Cobalt"}` or set `PING_SOUND_PATH` to an absolute file for a custom sound. |
 
 ## Required environment variables
 

@@ -1,0 +1,104 @@
+version: 1
+
+id: prod_ping
+kind: action
+name: Ping
+
+# Plays a short notification sound on the panel via Android's media-preview
+# activity. After playback the preview UI is dismissed with KEYCODE_BACK so
+# the wallpanel returns to whatever was foregrounded before.
+#
+# Payload shapes:
+#
+#   1. "PING" (default) — plays the file specified by PING_SOUND_PATH or the
+#      built-in default `Argon`.
+#
+#   2. JSON  {"sound": "Argon"}
+#      Picks the sound by basename from /system/media/audio/notifications/
+#      (without the .ogg extension). Sound name must match [A-Za-z0-9_-].
+#
+# To use a custom file outside the notifications directory, set
+# PING_SOUND_PATH to an absolute path; the basename input is then ignored.
+
+mqtt:
+  command_topic: ${base_topic}/ping/play
+
+ha:
+  component: button
+  object_id: ping
+  name: Ping
+  payload_press: PING
+  icon: mdi:bell-ring
+
+inputs:
+  trigger:
+    type: text
+    from_payload: true
+    payload_key: trigger
+    default: PING
+    required: false
+  sound:
+    type: text
+    from_payload: true
+    payload_key: sound
+    default: Argon
+    required: true
+  path:
+    type: text
+    env: PING_SOUND_PATH
+    default: ""
+    required: false
+
+steps:
+  - if:
+      matches:
+        value: ${sound}
+        pattern: '^[A-Za-z0-9_-]+$'
+      then: choose_source
+      else: invalid_sound
+
+  - id: choose_source
+    if:
+      exists: ${path}
+      then: play_custom
+      else: play_default
+
+  - id: play_default
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - file:///system/media/audio/notifications/${sound}.ogg
+        - -t
+        - audio/ogg
+    description: Play the named system notification sound
+    next: dismiss
+
+  - id: play_custom
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - file://${path}
+        - -t
+        - audio/ogg
+    description: Play the configured custom sound file
+
+  - id: dismiss
+    sleep: 2200
+
+  - adb: shell input keyevent KEYCODE_BACK
+    description: Close the AudioPreview activity left behind by the player
+
+  - return: played
+
+  - id: invalid_sound
+    fail: Sound name may only contain letters, digits, underscores or hyphens
