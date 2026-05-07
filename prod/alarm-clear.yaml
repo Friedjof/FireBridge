@@ -1,0 +1,46 @@
+version: 1
+
+id: prod_alarm_clear
+kind: action
+name: Alarm Clear
+
+# Wipes every DeskClock alarm by clearing the app's data.
+# Android exposes no public "delete all alarms" intent — DISMISS_ALARM only
+# reaches the firing/next pending alarm, and DeskClock's content provider is
+# not exported. `pm clear` is the only reliable path.
+#
+# Side effect: timer state, stopwatch state, and DeskClock settings (snooze
+# duration, vibration default, ...) are reset to defaults. On a wallpanel
+# these are usually defaults anyway, so the trade-off is acceptable.
+#
+# Guarded by the payload "CLEAR" so retained MQTT messages with arbitrary
+# strings cannot accidentally wipe the alarm list.
+
+mqtt:
+  command_topic: ${base_topic}/alarm/clear
+  state_topic: ${base_topic}/alarm/state
+
+ha:
+  component: button
+  object_id: alarm_clear
+  name: Alarm Clear
+  payload_press: CLEAR
+  icon: mdi:alarm-off
+
+inputs:
+  confirm:
+    type: choice
+    choices: [CLEAR]
+    from_payload: true
+    required: true
+
+steps:
+  - adb: shell pm clear com.android.deskclock
+    description: Reset DeskClock app data, removing every saved alarm
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: cleared
+      retain: true
+
+  - return: cleared
