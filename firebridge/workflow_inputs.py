@@ -7,6 +7,27 @@ from typing import Any
 from .yaml_endpoints import EndpointConfig, InputSpec
 
 
+_DAY_TOKENS = {
+    # English short
+    "sun": 1, "mon": 2, "tue": 3, "wed": 4, "thu": 5, "fri": 6, "sat": 7,
+    # English long
+    "sunday": 1, "monday": 2, "tuesday": 3, "wednesday": 4,
+    "thursday": 5, "friday": 6, "saturday": 7,
+    # German short
+    "so": 1, "mo": 2, "di": 3, "mi": 4, "do": 5, "fr": 6, "sa": 7,
+}
+
+_DAY_GROUPS = {
+    "daily": [1, 2, 3, 4, 5, 6, 7],
+    "all": [1, 2, 3, 4, 5, 6, 7],
+    "every": [1, 2, 3, 4, 5, 6, 7],
+    "weekdays": [2, 3, 4, 5, 6],
+    "workdays": [2, 3, 4, 5, 6],
+    "weekend": [7, 1],
+    "weekends": [7, 1],
+}
+
+
 def _parse_payload(payload: str) -> Any:
     stripped = payload.strip()
     if not stripped:
@@ -32,6 +53,47 @@ def _coerce_number(value: Any) -> int | float:
         return value
     text = str(value).strip()
     return float(text) if "." in text else int(text)
+
+
+def _coerce_days(value: Any) -> str:
+    """Map an Android AlarmClock days specifier to a comma-separated 1-7 list.
+
+    Accepts named groups (`daily`, `weekdays`, `weekend`), German/English day
+    abbreviations (`mo`, `di`, `mon`, `tue`, ...), full names (`monday`),
+    raw integers (`2,3,6`), or a Python list. Empty input returns "".
+    """
+    if isinstance(value, list):
+        tokens: list[str] = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        text = str(value).strip().lower()
+        if not text:
+            return ""
+        if text in _DAY_GROUPS:
+            return ",".join(str(d) for d in _DAY_GROUPS[text])
+        tokens = [tok.strip() for tok in text.split(",") if tok.strip()]
+
+    days: list[int] = []
+    for raw in tokens:
+        token = raw.lower()
+        if token.isdigit():
+            number = int(token)
+            if not 1 <= number <= 7:
+                raise ValueError(f"Day number must be between 1 and 7, got {number}")
+            days.append(number)
+            continue
+        if token in _DAY_TOKENS:
+            days.append(_DAY_TOKENS[token])
+            continue
+        raise ValueError(f"Unknown day token: {raw}")
+
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for day in days:
+        if day in seen:
+            continue
+        seen.add(day)
+        ordered.append(day)
+    return ",".join(str(d) for d in ordered)
 
 
 def _coerce_choice(spec: InputSpec, value: Any) -> tuple[Any, dict[str, str] | None]:
@@ -72,6 +134,8 @@ def _coerce_value(spec: InputSpec, value: Any) -> Any:
         return _coerce_choice(spec, value)[0]
     if spec.type == "json":
         return json.loads(value) if isinstance(value, str) else value
+    if spec.type == "days":
+        return _coerce_days(value)
 
     raise ValueError(f"Unsupported input type for {spec.name}: {spec.type}")
 
@@ -99,7 +163,11 @@ def resolve_inputs(endpoint: EndpointConfig, payload: str) -> tuple[dict[str, An
             if isinstance(parsed_payload, dict) and key in parsed_payload:
                 value = parsed_payload[key]
                 has_value = True
-            elif len(payload_input_names) == 1:
+            elif not isinstance(parsed_payload, dict) and (
+                len(payload_input_names) == 1 or name == payload_input_names[0]
+            ):
+                # Non-dict payload routes to the first from-payload input;
+                # any further from-payload inputs fall through to env/default.
                 value = parsed_payload
                 has_value = True
 
