@@ -64,6 +64,9 @@ steps:
   - adb: shell settings put system screen_off_timeout 2147483647
     description: Keep the display awake
 
+  - adb: shell monkey -p io.homeassistant.companion.android.minimal 1
+    description: Launch Home Assistant
+
   - publish:
       topic: ${mqtt.state_topic}
       payload: "ON"
