@@ -14,17 +14,16 @@ name: Alarm
 #      time, then auto-clears.
 #
 #   2. JSON — e.g.
-#        {"time": "07:30", "days": "mo,di,fr"}
-#      Adds EXTRA_DAYS so the alarm repeats. `days` accepts:
-#        • named groups: `daily`, `weekdays`, `workdays`, `weekend`
-#        • German short:  mo, di, mi, do, fr, sa, so
-#        • English short: mon, tue, wed, thu, fri, sat, sun
-#        • full names:    monday, tuesday, ...
-#        • raw 1-7:       "2,3,6" (1=Sunday … 7=Saturday)
+#        {"time": "07:30", "days": "mo,di,fr", "label": "Aufstehen"}
+#      `days` adds EXTRA_DAYS so the alarm repeats. Accepts named groups
+#      (`daily`, `weekdays`, `weekend`), German short (mo,di,...), English
+#      short (mon,tue,...), full names, or raw 1-7 (1=Sunday).
+#      `label` adds EXTRA_MESSAGE — limited to letters, digits, spaces and
+#      `_-.,:!?` so the value survives single-quote shell escaping safely.
 #
 # Note: the Android API does not support replacing an existing alarm — every
-# call adds a new entry to the DeskClock list. Delete obsolete recurring
-# alarms manually in the clock app if you need to swap them.
+# call adds a new entry to the DeskClock list. Use prod_alarm_clear to wipe
+# the list when you need to swap recurring alarms.
 
 mqtt:
   command_topic: ${base_topic}/alarm/set
@@ -47,6 +46,12 @@ inputs:
     type: days
     from_payload: true
     payload_key: days
+    default: ""
+    required: false
+  label:
+    type: text
+    from_payload: true
+    payload_key: label
     default: ""
     required: false
 
@@ -74,6 +79,14 @@ steps:
           type: int
 
   - if:
+      matches:
+        value: ${label}
+        pattern: '^[\w \-.,:!?]*$'
+      then: branch
+      else: invalid_label
+
+  - id: branch
+    if:
       exists: ${days}
       then: schedule_recurring
       else: schedule_oneshot
@@ -92,6 +105,9 @@ steps:
         - --ei
         - android.intent.extra.alarm.MINUTES
         - ${minute}
+        - --es
+        - android.intent.extra.alarm.MESSAGE
+        - "'${label}'"
         - --ez
         - android.intent.extra.alarm.SKIP_UI
         - "true"
@@ -115,6 +131,9 @@ steps:
         - --eial
         - android.intent.extra.alarm.DAYS
         - ${days}
+        - --es
+        - android.intent.extra.alarm.MESSAGE
+        - "'${label}'"
         - --ez
         - android.intent.extra.alarm.SKIP_UI
         - "true"
@@ -130,3 +149,6 @@ steps:
 
   - id: invalid_time
     fail: Time must be in 24h HH:MM format (e.g. 07:30)
+
+  - id: invalid_label
+    fail: Label may only contain letters, digits, spaces and "_-.,:!?"
