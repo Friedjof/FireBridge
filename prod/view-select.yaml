@@ -1,0 +1,73 @@
+version: 1
+
+id: prod_view_select
+kind: action
+name: View
+
+# Curated list of Home Assistant views exposed as a HA select entity.
+# The `value` of each choice is the path appended to homeassistant://navigate/
+# (so it matches whatever comes after https://<HA_HOST>/ in the browser URL).
+#
+# Edit this file to add or remove panels — every reload of FireBridge republishes
+# the discovery payload, and stale options are tombstoned by the discovery
+# cleanup at startup.
+
+mqtt:
+  command_topic: ${base_topic}/view_select/set
+  state_topic: ${base_topic}/view_select/state
+
+ha:
+  component: select
+  object_id: view_select
+  name: View
+  icon: mdi:view-dashboard
+
+inputs:
+  view:
+    type: choice
+    from_payload: true
+    required: true
+    choices:
+      - key: homepanel
+        name: HomePanel Munich
+        value: dashboard-homepanelmunich/0
+      - key: family_friedjof
+        name: Familie · Friedjof
+        value: dashboard-familie/friedjof
+      - key: home_overview
+        name: Übersicht
+        value: home/overview
+      - key: map
+        name: Karte
+        value: map/0
+      - key: logbook
+        name: Logbuch
+        value: logbook
+      - key: history
+        name: Verlauf
+        value: history
+      - key: calendar
+        name: Kalender
+        value: calendar
+      - key: todo_creativ
+        name: ToDo · Kreativ
+        value: todo?entity_id=todo.creativ
+
+steps:
+  - adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - homeassistant://navigate/${view}
+    description: Navigate the Home Assistant Companion app to the selected view
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${view_choice.name}
+      retain: true
+
+  - return: ${view_choice.name}
