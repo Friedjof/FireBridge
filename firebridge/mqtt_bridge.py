@@ -21,6 +21,16 @@ from .yaml_endpoints import EndpointConfig, load_endpoints
 log = get_logger("firebridge.mqtt")
 
 
+def _reason_code_value(reason_code) -> int | None:
+    if reason_code is None:
+        return None
+    value = getattr(reason_code, "value", reason_code)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True)
 class MqttAction:
     kind: str
@@ -158,12 +168,14 @@ class MqttBridge:
         )
 
         def on_connect(client, userdata, flags, reason_code, properties):
+            rc_value = _reason_code_value(reason_code)
             log.info(
                 "Connected to MQTT broker",
                 extra={
                     "host": self.config.mqtt_host,
                     "port": self.config.mqtt_port,
-                    "reason_code": int(reason_code),
+                    "reason_code": rc_value,
+                    "reason": str(reason_code),
                 },
             )
             client.publish(self.config.availability_topic, "online", retain=True)
@@ -184,10 +196,11 @@ class MqttBridge:
             self._publish_state(client)
 
         def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
-            level = log.warning if int(reason_code) != 0 else log.info
+            rc_value = _reason_code_value(reason_code)
+            level = log.warning if rc_value not in (0, None) else log.info
             level(
                 "Disconnected from MQTT broker",
-                extra={"reason_code": int(reason_code)},
+                extra={"reason_code": rc_value, "reason": str(reason_code)},
             )
 
         def on_message(client, userdata, message):
