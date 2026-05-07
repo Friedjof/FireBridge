@@ -4,6 +4,20 @@ id: prod_view_selector
 kind: action
 name: View Selector
 
+# Send the URL slug of a Lovelace view, e.g. for http://homeassistant.local:8123/lovelace/kitchen
+# you publish "kitchen" to the command topic. The configured HA_DASHBOARD env var
+# (default "lovelace") is prepended automatically.
+#
+# To target a non-default dashboard from a single text input, send a path that
+# contains "/", e.g. "lovelace-mobile/kitchen" — that is forwarded to the HA
+# Companion app verbatim and overrides HA_DASHBOARD for this navigation.
+# Leading slashes copied from a browser URL (e.g. "/dashboard-familie/friedjof")
+# are stripped before the deep link is built.
+#
+# The intent is targeted directly at HA's WebViewActivity (configurable via
+# HA_APP_COMPONENT) and tagged --activity-single-top, so the running instance
+# receives the deep link via onNewIntent() — no close-and-reopen flicker.
+
 mqtt:
   command_topic: ${base_topic}/view/set
   state_topic: ${base_topic}/view/state
@@ -25,33 +39,74 @@ inputs:
     env: HA_DASHBOARD
     default: lovelace
     required: true
+  app_component:
+    type: text
+    env: HA_APP_COMPONENT
+    default: io.homeassistant.companion.android.minimal/io.homeassistant.companion.android.webview.WebViewActivity
+    required: true
 
 steps:
   - if:
       matches:
         value: ${view}
-        pattern: ^[A-Za-z0-9_-]+$
-      then: open
+        pattern: ^/*[A-Za-z0-9_/-]+$
+      then: normalize
       else: invalid_view
 
-  - id: open
+  - id: normalize
+    set:
+      view_path:
+        regex:
+          source: ${view}
+          pattern: ^/*([A-Za-z0-9_/-]+)$
+          group: 1
+          type: text
+
+  - if:
+      matches:
+        value: ${view_path}
+        pattern: /
+      then: open_path
+      else: open_view
+
+  - id: open_view
     adb:
       args:
         - shell
         - am
         - start
+        - -n
+        - ${app_component}
+        - --activity-single-top
         - -a
         - android.intent.action.VIEW
         - -d
-        - homeassistant://navigate/${dashboard}/${view}
-    description: Deep-link the Home Assistant Companion app to the requested view
+        - homeassistant://navigate/${dashboard}/${view_path}
+    description: Deliver navigation intent to the running HA Companion WebViewActivity
+    next: publish
 
-  - publish:
+  - id: open_path
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -n
+        - ${app_component}
+        - --activity-single-top
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - homeassistant://navigate/${view_path}
+    description: Deliver navigation intent (full path) to the running HA Companion WebViewActivity
+
+  - id: publish
+    publish:
       topic: ${mqtt.state_topic}
-      payload: ${view}
+      payload: ${view_path}
       retain: true
 
-  - return: ${view}
+  - return: ${view_path}
 
   - id: invalid_view
-    fail: View name may only contain letters, digits, hyphens, or underscores
+    fail: View must contain only letters, digits, hyphens, underscores, or slashes (leading slashes are stripped)

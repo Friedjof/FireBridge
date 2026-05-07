@@ -30,12 +30,13 @@ CONFIG_DIR=/config/endpoints docker compose run --rm -v ./prod:/config/endpoints
 | `wifi-killswitch.yaml` | action | button | One-way disable: `svc wifi disable`. Guarded by payload `KILL_WIFI`; no enable counterpart by design. |
 | `shutdown.yaml` | action | button | `reboot -p`. Guarded by payload `SHUTDOWN`. |
 | `kiosk.yaml` | action | switch | Toggles full Fully Kiosk lockdown. `LOCK` sets Device Owner + launcher, enables Lock Task Mode, hides bars, disables Google/Samsung apps. `UNLOCK` reverses everything and falls back to a Pixel/AOSP launcher. |
-| `view-selector.yaml` | action | text | Deep-links the Home Assistant Companion app via `homeassistant://navigate/${HA_DASHBOARD}/<view>` (default dashboard `lovelace`). View names are constrained to `[A-Za-z0-9_-]+`. |
+| `view-selector.yaml` | action | text | Navigates the running HA Companion app to a Lovelace view. Send a single slug (e.g. `kitchen`) to use `${HA_DASHBOARD}` as prefix, or a full path with `/` (e.g. `lovelace-mobile/kitchen`) to override the dashboard inline. Intent targets `${HA_APP_COMPONENT}` directly with `--activity-single-top` so the existing instance receives `onNewIntent` instead of relaunching. Allowed characters: `[A-Za-z0-9_/-]`. |
 
 ## Required environment variables
 
 - `UNLOCK_PIN` — read by `display-pin.yaml` from the env, marked `secret: true` so it is redacted in dry-runs and reports.
 - `HA_DASHBOARD` — optional, read by `view-selector.yaml`. Defaults to `lovelace`; set to a custom dashboard slug if you don't use the default Lovelace dashboard.
+- `HA_APP_COMPONENT` — optional, read by `view-selector.yaml`. Defaults to the minimal Companion's `WebViewActivity`; set to `io.homeassistant.companion.android/io.homeassistant.companion.android.webview.WebViewActivity` if you run the full Home Assistant Companion build.
 - All standard `MQTT_*` and `DEVICE_*` settings from `.env-example`.
 
 ## Safety guards
