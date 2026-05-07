@@ -30,6 +30,8 @@ class AppConfig:
     mqtt_discovery_prefix: str = "homeassistant"
     mqtt_state_interval: int = 30
     mqtt_ignore_retained_commands: bool = True
+    mqtt_discovery_cleanup: bool = True
+    mqtt_discovery_cleanup_delay: float = 3.0
 
     config_dir: str = "config/endpoints"
     timezone: str = "UTC"
@@ -61,6 +63,10 @@ class AppConfig:
             mqtt_ignore_retained_commands=_bool_from_env(
                 "MQTT_IGNORE_RETAINED_COMMANDS",
                 True,
+            ),
+            mqtt_discovery_cleanup=_bool_from_env("MQTT_DISCOVERY_CLEANUP", True),
+            mqtt_discovery_cleanup_delay=float(
+                environ.get("MQTT_DISCOVERY_CLEANUP_DELAY", "3.0")
             ),
             config_dir=environ.get("CONFIG_DIR", "config/endpoints"),
             timezone=environ.get("TZ", "UTC"),

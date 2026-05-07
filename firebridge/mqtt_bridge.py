@@ -100,6 +100,10 @@ class MqttBridge:
         self.runner = runner or AdbRunner(timeout=config.adb_command_timeout)
         self.endpoints = load_endpoints(config.config_dir)
         self.adb_lock = RLock()
+        self._discovery_current: set[str] = set()
+        self._discovery_observed: set[str] = set()
+        self._discovery_reconcile_at: float | None = None
+        self._discovery_reconciled = True
 
     def run_forever(self) -> int:
         if not self.config.mqtt_host:
@@ -188,11 +192,27 @@ class MqttBridge:
             )
             log.debug("Subscriptions", extra={"topics": topics})
             if self.config.mqtt_discovery_enabled:
+                self._discovery_current = self._current_discovery_topics()
                 published = self._publish_discovery(client)
                 log.info(
                     "Published HA discovery payloads",
                     extra={"count": published, "prefix": self.config.mqtt_discovery_prefix},
                 )
+                if self.config.mqtt_discovery_cleanup:
+                    wildcard = self._discovery_wildcard()
+                    client.subscribe(wildcard)
+                    self._discovery_observed.clear()
+                    self._discovery_reconciled = False
+                    self._discovery_reconcile_at = (
+                        time.monotonic() + self.config.mqtt_discovery_cleanup_delay
+                    )
+                    log.info(
+                        "Watching discovery wildcard for stale entities",
+                        extra={
+                            "pattern": wildcard,
+                            "delay_s": self.config.mqtt_discovery_cleanup_delay,
+                        },
+                    )
             self._publish_state(client)
 
         def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
@@ -204,6 +224,15 @@ class MqttBridge:
             )
 
         def on_message(client, userdata, message):
+            if (
+                self.config.mqtt_discovery_enabled
+                and self.config.mqtt_discovery_cleanup
+                and self._is_owned_discovery_topic(message.topic)
+            ):
+                if bool(message.retain) and message.topic not in self._discovery_current:
+                    self._discovery_observed.add(message.topic)
+                return
+
             if should_ignore_mqtt_message(self.config, bool(message.retain)):
                 log.debug(
                     "Ignoring retained MQTT command",
@@ -321,6 +350,7 @@ class MqttBridge:
             last_state_publish = time.monotonic()
             while True:
                 time.sleep(1)
+                self._maybe_reconcile_discovery(client)
                 try:
                     scheduled_results = scheduler.run_due()
                     if scheduled_results:
@@ -378,6 +408,51 @@ class MqttBridge:
             )
             published += 1
         return published
+
+    def _current_discovery_topics(self) -> set[str]:
+        return {
+            discovery.topic
+            for discovery in build_discovery_payloads(
+                self.config,
+                self.endpoints if self.endpoints else None,
+            )
+        }
+
+    def _discovery_wildcard(self) -> str:
+        prefix = self.config.mqtt_discovery_prefix.strip("/")
+        return f"{prefix}/+/{self.config.device_id}/+/config"
+
+    def _is_owned_discovery_topic(self, topic: str) -> bool:
+        prefix = self.config.mqtt_discovery_prefix.strip("/")
+        parts = topic.split("/")
+        return (
+            len(parts) == 5
+            and parts[0] == prefix
+            and parts[2] == self.config.device_id
+            and parts[4] == "config"
+        )
+
+    def _maybe_reconcile_discovery(self, client) -> None:
+        if self._discovery_reconciled or self._discovery_reconcile_at is None:
+            return
+        if time.monotonic() < self._discovery_reconcile_at:
+            return
+
+        stale = sorted(self._discovery_observed - self._discovery_current)
+        if stale:
+            for topic in stale:
+                client.publish(topic, payload="", retain=True)
+            log.info(
+                "Removed stale discovery entities",
+                extra={"count": len(stale), "topics": stale},
+            )
+        else:
+            log.debug("No stale discovery entities to remove")
+
+        client.unsubscribe(self._discovery_wildcard())
+        self._discovery_observed.clear()
+        self._discovery_reconciled = True
+        self._discovery_reconcile_at = None
 
     def _publish_action_state(self, client, result: ToolResult) -> None:
         if result.tool.startswith("screen.") and "screen" in result.state:

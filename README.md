@@ -238,6 +238,8 @@ volumes:
 | `MQTT_DISCOVERY_PREFIX` | `homeassistant` | Home Assistant discovery prefix. |
 | `MQTT_STATE_INTERVAL` | `30` | Seconds between periodic state publishes. |
 | `MQTT_IGNORE_RETAINED_COMMANDS` | `true` | Ignore retained messages received on command topics so old commands are not replayed after restart. |
+| `MQTT_DISCOVERY_CLEANUP` | `true` | After publishing discovery, scan retained `<prefix>/+/<DEVICE_ID>/+/config` topics and tombstone any whose `object_id` no longer corresponds to a configured endpoint. Removes the stale Home Assistant entity. |
+| `MQTT_DISCOVERY_CLEANUP_DELAY` | `3.0` | Seconds to wait for retained discovery messages to arrive before reconciling. Increase on slow brokers, decrease for faster startup. |
 | `CONFIG_DIR` | `config/endpoints` | Directory containing YAML endpoint files. `compose.yml` sets this to `/config/endpoints` and mounts `./examples` there. |
 
 ### Device Behavior
