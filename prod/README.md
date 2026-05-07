@@ -32,6 +32,7 @@ CONFIG_DIR=/config/endpoints docker compose run --rm -v ./prod:/config/endpoints
 | `kiosk.yaml` | action | switch | Toggles full Fully Kiosk lockdown. `LOCK` sets Device Owner + launcher, enables Lock Task Mode, hides bars, disables Google/Samsung apps. `UNLOCK` reverses everything and falls back to a Pixel/AOSP launcher. |
 | `view-selector.yaml` | action | text | Navigates the running HA Companion app to a Lovelace view. Send a single slug (e.g. `kitchen`) to use `${HA_DASHBOARD}` as prefix, or a full path with `/` (e.g. `lovelace-mobile/kitchen`) to override the dashboard inline. Intent targets `${HA_APP_COMPONENT}` directly with `--activity-single-top` so the existing instance receives `onNewIntent` instead of relaunching. Allowed characters: `[A-Za-z0-9_/-]`. |
 | `view-select.yaml` | action | select | Curated dropdown of HA views deep-linked via `homeassistant://navigate/<value>`. Edit the `inputs.view.choices` list to add or remove entries; FireBridge republishes discovery on each restart and tombstones removed options. State topic publishes the chosen `name`. |
+| `alarm.yaml` | action | text | Schedules an alarm via Android's `SET_ALARM` intent (handled by `com.android.deskclock`). Plain text `HH:MM` fires once; JSON `{"time":"07:30","days":"mo,di,fr"}` adds `EXTRA_DAYS` for recurring alarms. `days` accepts `daily`, `weekdays`, `weekend`, German/English day shortcuts, full names, or raw 1-7 (1=Sun). |
 
 ## Required environment variables
 

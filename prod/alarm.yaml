@@ -1,0 +1,132 @@
+version: 1
+
+id: prod_alarm
+kind: action
+name: Alarm
+
+# Schedules an alarm via Android's AlarmClock API
+# (android.intent.action.SET_ALARM, handled by com.android.deskclock).
+# SKIP_UI=true keeps the clock app off-screen.
+#
+# Two payload shapes are accepted on the same command topic:
+#
+#   1. Plain text — e.g. "07:30" — fires once at the next matching wall-clock
+#      time, then auto-clears.
+#
+#   2. JSON — e.g.
+#        {"time": "07:30", "days": "mo,di,fr"}
+#      Adds EXTRA_DAYS so the alarm repeats. `days` accepts:
+#        • named groups: `daily`, `weekdays`, `workdays`, `weekend`
+#        • German short:  mo, di, mi, do, fr, sa, so
+#        • English short: mon, tue, wed, thu, fri, sat, sun
+#        • full names:    monday, tuesday, ...
+#        • raw 1-7:       "2,3,6" (1=Sunday … 7=Saturday)
+#
+# Note: the Android API does not support replacing an existing alarm — every
+# call adds a new entry to the DeskClock list. Delete obsolete recurring
+# alarms manually in the clock app if you need to swap them.
+
+mqtt:
+  command_topic: ${base_topic}/alarm/set
+  state_topic: ${base_topic}/alarm/state
+
+ha:
+  component: text
+  object_id: alarm
+  name: Alarm
+  mode: text
+  icon: mdi:alarm
+
+inputs:
+  time:
+    type: text
+    from_payload: true
+    payload_key: time
+    required: true
+  days:
+    type: days
+    from_payload: true
+    payload_key: days
+    default: ""
+    required: false
+
+steps:
+  - if:
+      matches:
+        value: ${time}
+        pattern: '^([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+      then: parse
+      else: invalid_time
+
+  - id: parse
+    set:
+      hour:
+        regex:
+          source: ${time}
+          pattern: '^(\d{1,2}):'
+          group: 1
+          type: int
+      minute:
+        regex:
+          source: ${time}
+          pattern: ':(\d{2})$'
+          group: 1
+          type: int
+
+  - if:
+      exists: ${days}
+      then: schedule_recurring
+      else: schedule_oneshot
+
+  - id: schedule_oneshot
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.SET_ALARM
+        - --ei
+        - android.intent.extra.alarm.HOUR
+        - ${hour}
+        - --ei
+        - android.intent.extra.alarm.MINUTES
+        - ${minute}
+        - --ez
+        - android.intent.extra.alarm.SKIP_UI
+        - "true"
+    description: Schedule a one-shot alarm
+    next: publish
+
+  - id: schedule_recurring
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.SET_ALARM
+        - --ei
+        - android.intent.extra.alarm.HOUR
+        - ${hour}
+        - --ei
+        - android.intent.extra.alarm.MINUTES
+        - ${minute}
+        - --eial
+        - android.intent.extra.alarm.DAYS
+        - ${days}
+        - --ez
+        - android.intent.extra.alarm.SKIP_UI
+        - "true"
+    description: Schedule a recurring alarm with EXTRA_DAYS
+
+  - id: publish
+    publish:
+      topic: ${mqtt.state_topic}
+      payload: ${time}
+      retain: true
+
+  - return: ${time}
+
+  - id: invalid_time
+    fail: Time must be in 24h HH:MM format (e.g. 07:30)
