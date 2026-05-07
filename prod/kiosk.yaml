@@ -1,0 +1,149 @@
+version: 1
+
+id: prod_kiosk
+kind: action
+name: Kiosk
+
+mqtt:
+  command_topic: ${base_topic}/kiosk/set
+  state_topic: ${base_topic}/kiosk/state
+
+ha:
+  component: switch
+  object_id: kiosk
+  name: Kiosk
+  payload_on: LOCK
+  payload_off: UNLOCK
+  icon: mdi:lock
+
+inputs:
+  state:
+    type: choice
+    choices: [LOCK, UNLOCK]
+    from_payload: true
+    required: true
+
+steps:
+  - if:
+      equals:
+        left: ${state}
+        right: LOCK
+      then: do_lock
+      else: do_unlock
+
+  # ── Lock branch ────────────────────────────────────────
+  - id: do_lock
+    adb: shell dpm set-device-owner de.ozerov.fully/.FullyDeviceAdminReceiver || true
+    description: Set Fully Kiosk as Device Owner (already-set is tolerated)
+
+  - adb: shell cmd package set-home-activity de.ozerov.fully/.MainActivity
+    description: Set Fully Kiosk as default launcher
+
+  - adb: shell dpm set-lock-task-packages de.ozerov.fully
+    description: Allow only Fully Kiosk in Lock Task Mode
+
+  - adb: shell settings put global policy_control immersive.full=*
+    description: Hide status and navigation bars
+
+  - adb: shell settings put global heads_up_notifications_enabled 0
+    description: Disable heads-up notifications
+
+  - adb: shell settings put global show_notification_channel_warnings 0
+    description: Hide notification channel warnings
+
+  - adb: shell pm disable-user --user 0 com.android.vending || true
+    description: Disable Play Store
+
+  - adb: shell pm disable-user --user 0 com.android.chrome || true
+    description: Disable Chrome
+
+  - adb: shell pm disable-user --user 0 com.google.android.googlequicksearchbox || true
+    description: Disable Google Assistant / Search
+
+  - adb: shell pm disable-user --user 0 com.android.settings || true
+    description: Disable system Settings app
+
+  - adb: shell pm disable-user --user 0 com.google.android.apps.nexuslauncher || true
+    description: Disable Pixel/Nexus launcher
+
+  - adb: shell pm disable-user --user 0 com.sec.android.app.sbrowser || true
+    description: Disable Samsung Internet
+
+  - adb: shell pm disable-user --user 0 com.samsung.android.app.settings.bixby || true
+    description: Disable Bixby Settings
+
+  - adb: shell settings put global stay_on_while_plugged_in 3
+    description: Keep screen on while plugged in (AC + USB)
+
+  - adb: shell settings put global safe_boot_disallowed 1
+    description: Disallow Safe Boot
+
+  - adb: shell am start -n de.ozerov.fully/.MainActivity
+    description: Launch Fully Kiosk Browser
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: LOCK
+      retain: true
+
+  - return: LOCK
+
+  # ── Unlock branch ──────────────────────────────────────
+  - id: do_unlock
+    adb: shell dpm set-lock-task-packages
+    description: Clear Lock Task Mode allowlist
+
+  - adb: shell dpm remove-active-admin de.ozerov.fully/.FullyDeviceAdminReceiver || true
+    description: Remove Fully Kiosk as Device Owner / Admin
+
+  - adb: shell settings put global policy_control null
+    description: Restore status and navigation bars
+
+  - adb: shell settings put global heads_up_notifications_enabled 1
+    description: Re-enable heads-up notifications
+
+  - adb: shell settings put global show_notification_channel_warnings 1
+    description: Re-enable notification channel warnings
+
+  - adb: shell pm enable com.android.vending || true
+    description: Re-enable Play Store
+
+  - adb: shell pm enable com.android.chrome || true
+    description: Re-enable Chrome
+
+  - adb: shell pm enable com.google.android.googlequicksearchbox || true
+    description: Re-enable Google Assistant / Search
+
+  - adb: shell pm enable com.android.settings || true
+    description: Re-enable system Settings app
+
+  - adb: shell pm enable com.google.android.apps.nexuslauncher || true
+    description: Re-enable Pixel/Nexus launcher
+
+  - adb: shell pm enable com.sec.android.app.sbrowser || true
+    description: Re-enable Samsung Internet
+
+  - adb: shell pm enable com.samsung.android.app.settings.bixby || true
+    description: Re-enable Bixby Settings
+
+  - adb: shell settings put global safe_boot_disallowed 0
+    description: Allow Safe Boot again
+
+  - adb: shell settings put global stay_on_while_plugged_in 0
+    description: Reset stay-on-while-plugged-in
+
+  - adb: shell cmd package set-home-activity com.google.android.apps.nexuslauncher/.NexusLauncherActivity || true
+    description: Try Pixel launcher as default home
+
+  - adb: shell cmd package set-home-activity com.android.launcher3/.Launcher || true
+    description: Fall back to AOSP Launcher3
+
+  - adb: shell input keyevent 3
+    description: Press HOME to leave Fully Kiosk
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: UNLOCK
+      retain: true
+
+  - return: UNLOCK

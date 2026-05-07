@@ -1,0 +1,57 @@
+version: 1
+
+id: prod_view_selector
+kind: action
+name: View Selector
+
+mqtt:
+  command_topic: ${base_topic}/view/set
+  state_topic: ${base_topic}/view/state
+
+ha:
+  component: text
+  object_id: view_selector
+  name: View Selector
+  mode: text
+  icon: mdi:view-dashboard
+
+inputs:
+  view:
+    type: text
+    from_payload: true
+    required: true
+  dashboard:
+    type: text
+    env: HA_DASHBOARD
+    default: lovelace
+    required: true
+
+steps:
+  - if:
+      matches:
+        value: ${view}
+        pattern: ^[A-Za-z0-9_-]+$
+      then: open
+      else: invalid_view
+
+  - id: open
+    adb:
+      args:
+        - shell
+        - am
+        - start
+        - -a
+        - android.intent.action.VIEW
+        - -d
+        - homeassistant://navigate/${dashboard}/${view}
+    description: Deep-link the Home Assistant Companion app to the requested view
+
+  - publish:
+      topic: ${mqtt.state_topic}
+      payload: ${view}
+      retain: true
+
+  - return: ${view}
+
+  - id: invalid_view
+    fail: View name may only contain letters, digits, hyphens, or underscores
