@@ -169,41 +169,14 @@ def _endpoint_payloads(config: AppConfig, endpoint: EndpointConfig) -> list[Disc
     return payloads
 
 
-def build_discovery_payloads(
-    config: AppConfig,
-    endpoints: list[EndpointConfig] | None = None,
-) -> list[DiscoveryPayload]:
-    if endpoints is not None:
-        payloads: list[DiscoveryPayload] = []
-        for endpoint in endpoints:
-            payloads.extend(_endpoint_payloads(config, endpoint))
-        return payloads
+def _core_payloads(config: AppConfig) -> list[DiscoveryPayload]:
+    """Discovery entries derived purely from the always-published state topics.
 
+    These entities are emitted regardless of whether YAML endpoints are loaded,
+    so Home Assistant always sees a connectivity sensor for the device — even
+    when ADB is offline and YAML-defined sensors are skipped by the scheduler.
+    """
     return [
-        _payload(
-            config,
-            "switch",
-            "display",
-            "Display",
-            command_topic=config.screen_command_topic,
-            state_topic=config.screen_state_topic,
-            payload_on="ON",
-            payload_off="OFF",
-        ),
-        _payload(
-            config,
-            "button",
-            "open_default_url",
-            "Open Default URL",
-            command_topic=config.default_url_command_topic,
-        ),
-        _payload(
-            config,
-            "button",
-            "reconnect_adb",
-            "Reconnect ADB",
-            command_topic=config.reconnect_command_topic,
-        ),
         _payload(
             config,
             "binary_sensor",
@@ -243,24 +216,66 @@ def build_discovery_payloads(
             device_class="battery",
             state_class="measurement",
         ),
-        _payload(
-            config,
-            "number",
-            "brightness",
-            "Brightness",
-            command_topic=config.brightness_command_topic,
-            state_topic=config.brightness_state_topic,
-            min=0,
-            max=255,
-            step=1,
-            mode="slider",
-        ),
-        _payload(
-            config,
-            "text",
-            "open_url",
-            "Open URL",
-            command_topic=config.url_command_topic,
-            mode="text",
-        ),
     ]
+
+
+def build_discovery_payloads(
+    config: AppConfig,
+    endpoints: list[EndpointConfig] | None = None,
+) -> list[DiscoveryPayload]:
+    payloads: list[DiscoveryPayload] = list(_core_payloads(config))
+
+    if endpoints is not None:
+        for endpoint in endpoints:
+            payloads.extend(_endpoint_payloads(config, endpoint))
+        return payloads
+
+    payloads.extend(
+        [
+            _payload(
+                config,
+                "switch",
+                "display",
+                "Display",
+                command_topic=config.screen_command_topic,
+                state_topic=config.screen_state_topic,
+                payload_on="ON",
+                payload_off="OFF",
+            ),
+            _payload(
+                config,
+                "button",
+                "open_default_url",
+                "Open Default URL",
+                command_topic=config.default_url_command_topic,
+            ),
+            _payload(
+                config,
+                "button",
+                "reconnect_adb",
+                "Reconnect ADB",
+                command_topic=config.reconnect_command_topic,
+            ),
+            _payload(
+                config,
+                "number",
+                "brightness",
+                "Brightness",
+                command_topic=config.brightness_command_topic,
+                state_topic=config.brightness_state_topic,
+                min=0,
+                max=255,
+                step=1,
+                mode="slider",
+            ),
+            _payload(
+                config,
+                "text",
+                "open_url",
+                "Open URL",
+                command_topic=config.url_command_topic,
+                mode="text",
+            ),
+        ]
+    )
+    return payloads

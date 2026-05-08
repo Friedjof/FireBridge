@@ -29,6 +29,31 @@ class DiscoveryTests(unittest.TestCase):
         )
         self.assertEqual(by_object_id["battery"].payload["device_class"], "battery")
 
+    def test_core_connectivity_sensor_emitted_alongside_yaml_endpoints(self):
+        config = AppConfig(
+            device_id="fire_hd8",
+            mqtt_base_topic="firebridge/fire-hd8",
+        )
+        endpoints = load_endpoints("config/endpoints")
+
+        payloads = build_discovery_payloads(config, endpoints)
+        by_object_id = {payload.object_id: payload for payload in payloads}
+
+        # The connectivity / status sensors must show up even when the user
+        # only loads YAML endpoints; otherwise HA loses sight of the device
+        # the moment ADB drops.
+        self.assertIn("connected", by_object_id)
+        self.assertEqual(by_object_id["connected"].component, "binary_sensor")
+        self.assertEqual(
+            by_object_id["connected"].payload["device_class"], "connectivity"
+        )
+        self.assertEqual(
+            by_object_id["connected"].payload["state_topic"],
+            "firebridge/fire-hd8/state",
+        )
+        self.assertIn("adb_state", by_object_id)
+        self.assertIn("battery", by_object_id)
+
     def test_sensor_command_topic_becomes_separate_button(self):
         config = AppConfig(
             device_id="fire_hd8",

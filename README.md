@@ -29,6 +29,7 @@ The first target device is an Amazon Fire HD 8 5th Gen (`thebes`) running Lineag
 - Report battery level, charging status, screen state, and basic device info.
 - Reconnect ADB on command and connect to `ADB_TARGET` on startup.
 - Publish Home Assistant MQTT discovery entities.
+- Skip scheduled (cron-driven) workflows automatically while the device is unreachable, with a single warning at the disconnect transition rather than per-tick stack traces.
 
 ## Quick Start
 
@@ -434,12 +435,24 @@ Example payload published to `firebridge/fire-hd8/state`:
 
 ## Home Assistant Entities
 
-With MQTT discovery enabled, FireBridge should create these entities automatically:
+With MQTT discovery enabled, FireBridge always emits a small set of "core"
+entities derived purely from the always-published state topics — these stay
+visible in HA even when no YAML endpoints are loaded and even when ADB is
+offline:
 
-- `switch.fire_hd8_wallpanel_display`
-- `sensor.fire_hd8_wallpanel_battery`
-- `number.fire_hd8_wallpanel_brightness`
-- `text.fire_hd8_wallpanel_open_url`
+- `binary_sensor.<device_id>_connected` — `device_class: connectivity`,
+  reflects the ADB connection state (`ON` while reachable, `OFF` after a
+  disconnect). Always available, regardless of YAML configuration.
+- `binary_sensor.<device_id>_screen` — last known screen power state.
+- `sensor.<device_id>_adb_state` — raw `adb get-state` value
+  (`device`, `unauthorized`, `offline`, `unknown`).
+- `sensor.<device_id>_battery` — battery percentage with `device_class: battery`.
+
+Beyond these, the bundled (no-YAML) configuration also publishes:
+
+- `switch.<device_id>_display`
+- `number.<device_id>_brightness`
+- `text.<device_id>_open_url`
 
 The display switch is the main entity:
 
