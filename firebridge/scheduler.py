@@ -91,6 +91,7 @@ class WorkflowScheduler:
                     "endpoints": [job.endpoint.id for job in self.jobs],
                 },
             )
+        self._device_connected: bool | None = None
 
     def run_due(self) -> list[WorkflowResult]:
         current_time = self.now()
@@ -113,23 +114,46 @@ class WorkflowScheduler:
                     self.runner,
                     publisher=self.publisher,
                 )
-                result = workflow.run(job.endpoint, job.payload)
+                result = workflow.run(
+                    job.endpoint,
+                    job.payload,
+                    skip_on_disconnect=True,
+                )
             duration_ms = int((time.monotonic() - started) * 1000)
-            log.info(
-                "Scheduled workflow finished",
-                extra={
-                    "endpoint_id": job.endpoint.id,
-                    "status": result.status,
-                    "return_value": truncate(result.return_value, 120),
-                    "commands": len(result.commands),
-                    "duration_ms": duration_ms,
-                },
-            )
+            self._note_connection(result)
+            if result.status == "skipped_disconnected":
+                log.debug(
+                    "Scheduled workflow skipped (device unreachable)",
+                    extra={"endpoint_id": job.endpoint.id, "duration_ms": duration_ms},
+                )
+            else:
+                log.info(
+                    "Scheduled workflow finished",
+                    extra={
+                        "endpoint_id": job.endpoint.id,
+                        "status": result.status,
+                        "return_value": truncate(result.return_value, 120),
+                        "commands": len(result.commands),
+                        "duration_ms": duration_ms,
+                    },
+                )
             self._publish_return_state(job.endpoint, result)
             job.mark_run(current_time)
-            results.append(result)
+            if result.status != "skipped_disconnected":
+                results.append(result)
 
         return results
+
+    def _note_connection(self, result: WorkflowResult) -> None:
+        connected = result.status != "skipped_disconnected"
+        if self._device_connected is True and not connected:
+            log.warning(
+                "Device unreachable, scheduled workflows pausing until ADB returns",
+                extra={"endpoint_id": result.endpoint_id},
+            )
+        elif self._device_connected is False and connected:
+            log.info("Device reachable again, scheduled workflows resuming")
+        self._device_connected = connected
 
     def _publish_return_state(
         self,

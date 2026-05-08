@@ -94,7 +94,19 @@ class WorkflowRunner:
         endpoint: EndpointConfig,
         payload: str = "",
         dry_run: bool = False,
+        skip_on_disconnect: bool = False,
     ) -> WorkflowResult:
+        if skip_on_disconnect and not dry_run and not self._is_device_connected():
+            log.debug(
+                "Skipping workflow: ADB device unreachable",
+                extra={"endpoint_id": endpoint.id},
+            )
+            return WorkflowResult(
+                endpoint_id=endpoint.id,
+                kind=endpoint.kind,
+                status="skipped_disconnected",
+            )
+
         input_variables, secrets = resolve_inputs(endpoint, payload)
         variables = {
             **endpoint_variables(self.config, endpoint),
@@ -363,6 +375,15 @@ class WorkflowRunner:
         result.publishes.append(WorkflowPublishReport(topic=topic, payload=payload, retain=retain))
         if self.publisher and not dry_run:
             self.publisher(topic, payload, retain)
+
+    def _is_device_connected(self) -> bool:
+        context = self.config.tool_context()
+        command = adb_command(context, "get-state", description="ADB connectivity probe")
+        try:
+            completed = self.runner.run(command)
+        except Exception:
+            return False
+        return completed.returncode == 0 and completed.stdout.strip() == "device"
 
     def _redacted_variables(
         self,
